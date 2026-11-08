@@ -15,7 +15,7 @@ concurrency:
 jobs:
   refresh:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - name: Aggiorna i blocchi salvati sul server
         env:
@@ -37,7 +37,7 @@ jobs:
           if len(key) < 64 or parsed.scheme != 'https' or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment or parsed.path:
               raise SystemExit('Segreti ASC mancanti o configurazione URL non valida')
           opener = urllib.request.build_opener(NoRedirect)
-          deadline = time.monotonic() + 27 * 60
+          deadline = time.monotonic() + 57 * 60
           print('Avvio UTC:', datetime.datetime.now(datetime.timezone.utc).isoformat())
           print('Origine:', os.environ['GITHUB_EVENT_NAME'], 'run:', os.environ['GITHUB_RUN_ID'])
           for block in range(1, 81):
