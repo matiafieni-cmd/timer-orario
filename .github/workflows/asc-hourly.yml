@@ -3,7 +3,7 @@ name: ASC aggiornamento orario
 
 on:
   schedule:
-    - cron: '7 * * * *'
+    - cron: '37 * * * *'
   workflow_dispatch: {}
 
 permissions: {}
