@@ -43,6 +43,7 @@ jobs:
           for block in range(1, 81):
               request = urllib.request.Request(base + '/api/cron/refresh', method='POST', headers={
                   'Authorization': 'Bearer ' + key,
+                  'User-Agent': 'ASC-maintenance-timer/1.0',
                   'X-ASC-Event': os.environ['GITHUB_EVENT_NAME'],
                   'X-ASC-Run-Id': os.environ['GITHUB_RUN_ID'],
               })
