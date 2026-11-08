@@ -1,0 +1,71 @@
+# Only the timer lives here. Netatmo tokens and apartment data stay on the ASC server.
+name: ASC aggiornamento orario
+
+on:
+  schedule:
+    - cron: '7 * * * *'
+  workflow_dispatch: {}
+
+permissions: {}
+
+concurrency:
+  group: asc-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Aggiorna i blocchi salvati sul server
+        env:
+          ASC_CRON_KEY: ${{ secrets.ASC_CRON_KEY }}
+          ASC_SITE_URL: ${{ secrets.ASC_SITE_URL }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import datetime, json, os, time, urllib.error, urllib.parse, urllib.request
+
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, *args, **kwargs):
+                  return None
+
+          key = os.environ.get('ASC_CRON_KEY', '')
+          base = os.environ.get('ASC_SITE_URL', '').rstrip('/')
+          parsed = urllib.parse.urlsplit(base)
+          if len(key) < 64 or parsed.scheme != 'https' or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment or parsed.path:
+              raise SystemExit('Segreti ASC mancanti o configurazione URL non valida')
+          opener = urllib.request.build_opener(NoRedirect)
+          deadline = time.monotonic() + 27 * 60
+          print('Avvio UTC:', datetime.datetime.now(datetime.timezone.utc).isoformat())
+          print('Origine:', os.environ['GITHUB_EVENT_NAME'], 'run:', os.environ['GITHUB_RUN_ID'])
+          for block in range(1, 81):
+              request = urllib.request.Request(base + '/api/cron/refresh', method='POST', headers={
+                  'Authorization': 'Bearer ' + key,
+                  'X-ASC-Event': os.environ['GITHUB_EVENT_NAME'],
+                  'X-ASC-Run-Id': os.environ['GITHUB_RUN_ID'],
+              })
+              pause = 20
+              try:
+                  with opener.open(request, timeout=90) as response:
+                      body = json.loads(response.read(1024))
+                  if set(body) != {'done'} or type(body['done']) is not bool:
+                      raise SystemExit('Risposta ASC non riconosciuta')
+                  print('Blocco', block, 'completato; done:', body['done'])
+                  if body['done']:
+                      print('Fine UTC:', datetime.datetime.now(datetime.timezone.utc).isoformat())
+                      raise SystemExit(0)
+              except urllib.error.HTTPError as error:
+                  if error.code not in (429, 500, 502, 503, 504):
+                      raise SystemExit('Chiamata ASC rifiutata: HTTP ' + str(error.code))
+                  value = error.headers.get('Retry-After', '20')
+                  pause = max(20, int(value) if value.isdigit() else 20)
+                  print('Attesa richiesta dal server:', pause, 'secondi; HTTP', error.code)
+              except (urllib.error.URLError, TimeoutError):
+                  print('Trasporto non disponibile; riprovo dal checkpoint')
+              if time.monotonic() + pause >= deadline:
+                  raise SystemExit('Giro non concluso entro il limite: checkpoint conservato')
+              time.sleep(pause)
+          raise SystemExit('Limite blocchi raggiunto: checkpoint conservato')
+          PY
